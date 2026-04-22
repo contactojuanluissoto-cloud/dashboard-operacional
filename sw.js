@@ -1,23 +1,20 @@
-const CACHE = 'dashboard-op-v1';
-const ASSETS = [
-  './index.html',
-  './manifest.json',
+const CACHE = 'dashboard-libs-v1';
+
+// Solo cachear librerías externas, NUNCA el index.html
+const LIBS = [
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
 ];
 
-// Instalación: cachear todos los assets
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(cache => {
-      // Cachear de a uno para no fallar si alguno no está disponible
-      return Promise.allSettled(ASSETS.map(url => cache.add(url).catch(() => {})));
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE).then(cache =>
+      Promise.allSettled(LIBS.map(url => cache.add(url).catch(() => {})))
+    ).then(() => self.skipWaiting())
   );
 });
 
-// Activación: limpiar caches viejos
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -26,22 +23,26 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch: cache-first para assets locales, network-first para el resto
 self.addEventListener('fetch', e => {
-  // Solo manejar GET
-  if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
 
+  // index.html y manifest: SIEMPRE desde la red, nunca caché
+  if (url.pathname.endsWith('.html') || url.pathname.endsWith('manifest.json') || url.pathname.endsWith('/')) {
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    return;
+  }
+
+  // Librerías externas: caché primero (carga rápida)
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
       return fetch(e.request).then(response => {
-        // Cachear respuestas válidas
         if (response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE).then(cache => cache.put(e.request, clone));
         }
         return response;
-      }).catch(() => cached); // Si falla la red, devolver cache aunque sea viejo
+      });
     })
   );
 });
