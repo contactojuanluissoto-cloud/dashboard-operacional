@@ -162,6 +162,16 @@ td{padding:7px 8px;border-bottom:1px solid rgba(42,47,61,.5);color:var(--text);f
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
 
+/* MAPPER */
+.map-field{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px}
+.map-field label{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.1em;font-family:'IBM Plex Mono',monospace;display:block;margin-bottom:6px}
+.map-field select{width:100%;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif}
+.map-field select:focus{outline:none;border-color:var(--accent)}
+.map-field .map-hint{font-size:10px;color:var(--text3);margin-top:4px;font-family:'IBM Plex Mono',monospace}
+.map-required{color:var(--danger)}
+.map-field.mapped{border-color:rgba(54,201,142,0.4)}
+.map-field.missing{border-color:rgba(249,95,95,0.4)}
+
 /* MES TABS */
 .mes-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
 .mes-tab{padding:5px 14px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;transition:all .15s}
@@ -228,11 +238,29 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <!-- UPLOAD -->
   <div class="upload-area" id="dropZone" onclick="triggerUpload()">
     <h2 id="uploadTitle">Carga tus archivos Excel</h2>
-    <p id="uploadDesc">Arrastra uno o varios .xlsx — pueden ser meses distintos, el dashboard los consolida.<br>Hoja requerida: <strong>FACT_OPERACIONES</strong></p>
+    <p id="uploadDesc">Arrastra uno o más archivos .xlsx — el dashboard detecta las columnas automáticamente y te deja asignarlas.</p>
     <button class="btn btn-primary" onclick="event.stopPropagation();triggerUpload()">Seleccionar archivos</button>
-    <button class="btn btn-ghost" id="btnAdd" style="display:none;margin-left:8px" onclick="event.stopPropagation();triggerUpload()">+ Agregar mes</button>
-    <input type="file" id="fileInput" accept=".xlsx,.xls" multiple onchange="handleFiles(event)">
+    <button class="btn btn-ghost" id="btnAdd" style="display:none;margin-left:8px" onclick="event.stopPropagation();triggerUpload()">+ Agregar archivo</button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple onchange="handleFiles(event)">
     <div class="file-list" id="fileList"></div>
+  </div>
+
+  <!-- MAPEADOR DE COLUMNAS -->
+  <div id="colMapper" style="display:none;margin-bottom:24px">
+    <div class="sec">Configurar columnas detectadas</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.7">
+        Se detectaron las columnas de tu archivo. Asigna cada campo del dashboard a la columna que corresponda.<br>
+        Los campos marcados con <span style="color:var(--danger)">*</span> son obligatorios. El resto es opcional.
+      </p>
+      <div id="mapperGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:16px"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="aplicarMapeo()">✓ Aplicar y cargar datos</button>
+        <button class="btn btn-ghost" onclick="guardarMapeo()">💾 Guardar esta configuración</button>
+        <button onclick="resetMapeo()" style="background:transparent;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace">↺ Limpiar</button>
+        <span id="mapperStatus" style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace"></span>
+      </div>
+    </div>
   </div>
 
   <!-- GENERAL -->
@@ -438,7 +466,7 @@ function clearMemory(){
   ['navTabs','mesPill','btnAlertToggle'].forEach(id=>document.getElementById(id).style.display='none');
   document.getElementById('dropZone').classList.remove('has-data');
   document.getElementById('uploadTitle').textContent='Carga tus archivos Excel';
-  document.getElementById('uploadDesc').textContent='Arrastra uno o varios .xlsx — pueden ser meses distintos, el dashboard los consolida.\nHoja requerida: FACT_OPERACIONES';
+  document.getElementById('uploadDesc').textContent='Arrastra uno o más archivos .xlsx — el dashboard detecta las columnas automáticamente y te deja asignarlas.';
   document.getElementById('btnAdd').style.display='none';
   document.getElementById('fileList').innerHTML='';
   document.getElementById('alertPill').style.display='none';
@@ -476,48 +504,214 @@ const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
 const std=arr=>{const m=avg(arr);return Math.sqrt(avg(arr.map(x=>(x-m)**2)));};
 const chartOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e222d',titleColor:'#8892a4',bodyColor:'#e8eaf0',borderColor:'#2a2f3d',borderWidth:1}}};
 
+// ─── CAMPOS DEL DASHBOARD ─────────────────────────────────────────────────────
+// Cada campo tiene: id, label, requerido, hint, default (nombres de columna comunes)
+const CAMPOS=[
+  {id:'fecha',     label:'Fecha',              req:true,  hint:'Columna con la fecha de la operación',        defaults:['FECHA','fecha','Fecha','DATE','date']},
+  {id:'programado',label:'Cantidad programada', req:true,  hint:'Unidades planificadas / programadas',         defaults:['CANTIDAD PROGRAMADA','PROGRAMADO','Programado','programado','PLANNED']},
+  {id:'ejecutado', label:'Ejecutado / IN-OUT',  req:true,  hint:'Unidades reales ejecutadas',                  defaults:['IN/OUT','EJECUTADO','Ejecutado','ejecutado','ACTUAL']},
+  {id:'fillRate',  label:'Fill Rate',           req:false, hint:'Tasa de cumplimiento (0-1 o 0-100%)',         defaults:['FILL RATE','Fill Rate','fill_rate','FILL','fill']},
+  {id:'horas',     label:'Horas totales',       req:false, hint:'Horas trabajadas (decimal de Excel o número)',defaults:['HORAS TOTALES','Horas','horas','HOURS','hours']},
+  {id:'productividad',label:'Productividad',    req:false, hint:'u/hr ya calculada (si no, se calcula sola)', defaults:['PRODUCTIVIDAD POR HORA','PRODUCTIVIDAD','productividad','PRODUCTIVITY']},
+  {id:'tipo',      label:'Tipo operación',      req:false, hint:'Ej: DESPACHO, RECEPCION, etc.',              defaults:['Tipo','TIPO','tipo','TYPE','type']},
+  {id:'cuenta',    label:'Cuenta / Cliente',    req:false, hint:'Nombre de la cuenta o cliente principal',    defaults:['CUENTA','Cuenta','cuenta','ACCOUNT','account']},
+  {id:'cliente',   label:'Cliente final',       req:false, hint:'Cliente final si difiere de la cuenta',      defaults:['Cliente final','CLIENTE','cliente','CLIENT']},
+  {id:'responsable',label:'Responsable',        req:false, hint:'Nombre del operador o responsable',          defaults:['RESPONSABLE','Responsable','responsable','OPERATOR','operator']},
+  {id:'status',    label:'Status',              req:false, hint:'Estado: COMPLETADO, PENDIENTE, etc.',        defaults:['STATUS','Status','status','Estado','ESTADO']},
+  {id:'sva',       label:'SVA',                 req:false, hint:'Indicador SVA (SI/NO)',                      defaults:['SVA','sva','Sva']},
+  {id:'hoja',      label:'Hoja del Excel',      req:false, hint:'Nombre de la hoja a leer (vacío = primera)', defaults:[]},
+];
+
+// Mapeo activo: {campoId: nombreColumna}
+let colMap={};
+let rawFiles={}; // archivos pendientes de mapear: {nombre: {wb, fileName}}
+const MAPEO_KEY='dashboard_colmap_v1';
+
 // ─── UPLOAD ───────────────────────────────────────────────────────────────────
 const triggerUpload=()=>document.getElementById('fileInput').click();
-function handleFiles(e){Array.from(e.target.files).forEach(loadFile);e.target.value='';}
+function handleFiles(e){Array.from(e.target.files).forEach(loadFileRaw);e.target.value='';}
 
-function loadFile(file){
+function loadFileRaw(file){
   const reader=new FileReader();
   reader.onload=ev=>{
-    const wb=XLSX.read(ev.target.result,{type:'binary',cellDates:false});
-    const sh=wb.Sheets['FACT_OPERACIONES'];
-    if(!sh){alert(`No se encontró FACT_OPERACIONES en "${file.name}"`);return;}
-    const rows=XLSX.utils.sheet_to_json(sh,{defval:'',raw:true,range:2});
-    const parsed=rows.map(r=>{
-      const programado=parseFloat(r['CANTIDAD PROGRAMADA'])||0;
-      const ejecutado=parseFloat(r['IN/OUT'])||0;
-      let fillRate=parseFloat(r['FILL RATE'])||0;
-      // Normalizar siempre a rango 0-1: si viene como porcentaje (>1) dividir por 100
-      if(fillRate>1)fillRate/=100;
-      // Si viene como porcentaje muy alto (>100%), también normalizar
-      if(fillRate>1)fillRate=1;
-      const horasTotales=toHours(r['HORAS TOTALES']);
-      let prod=parseFloat(r['PRODUCTIVIDAD POR HORA'])||0;
-      if(!prod&&horasTotales>0)prod=ejecutado/horasTotales;
-      const fecha=parseExcelDate(r['FECHA']);
-      return{
-        fecha,
-        mesKey:fecha?`${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}`:'sin-fecha',
-        mesLabel:fecha?`${MESES[fecha.getMonth()]} ${fecha.getFullYear()}`:'Sin fecha',
-        tipo:(r['Tipo']||'').trim().toUpperCase(),
-        cuenta:(r['CUENTA']||'').trim(),
-        cliente:(r['Cliente final']||'').trim(),
-        responsable:(r['RESPONSABLE']||'').toString().trim(),
-        programado,ejecutado,fillRate,horasTotales,productividad:prod,
-        status:(r['STATUS']||'').trim(),
-        sva:(r['SVA']||'').toString().trim().toUpperCase(),
-        archivo:file.name,
-      };
-    }).filter(r=>r.programado>0||r.ejecutado>0);
-    if(!parsed.length){alert(`Sin operaciones en "${file.name}"`);return;}
-    loadedFiles[file.name]=parsed;
-    rebuildData();
+    let wb;
+    if(file.name.endsWith('.csv')){
+      // CSV: convertir a workbook
+      const text=ev.target.result;
+      wb=XLSX.read(text,{type:'string'});
+    } else {
+      wb=XLSX.read(ev.target.result,{type:'binary',cellDates:false});
+    }
+    rawFiles[file.name]={wb,fileName:file.name};
+    // Detectar columnas de la primera hoja con datos
+    const sheetName=wb.SheetNames[0];
+    const sh=wb.Sheets[sheetName];
+    const rows=XLSX.utils.sheet_to_json(sh,{defval:'',raw:true,header:1});
+    // Buscar fila de encabezado (primera fila con texto)
+    let headerRow=rows.find(r=>r.some(c=>c&&c.toString().trim()));
+    if(!headerRow)headerRow=[];
+    const cols=headerRow.map(c=>c?c.toString().trim():'').filter(Boolean);
+    mostrarMapper(cols, wb.SheetNames);
   };
-  reader.readAsBinaryString(file);
+  if(file.name.endsWith('.csv')){
+    reader.readAsText(file,'utf-8');
+  } else {
+    reader.readAsBinaryString(file);
+  }
+}
+
+function mostrarMapper(cols, sheets){
+  // Intentar cargar mapeo guardado
+  const saved=cargarMapeoGuardado();
+  // Auto-asignar defaults si coinciden
+  const autoMap={};
+  CAMPOS.forEach(campo=>{
+    if(saved&&saved[campo.id]&&cols.includes(saved[campo.id])){
+      autoMap[campo.id]=saved[campo.id];
+    } else {
+      const found=campo.defaults.find(d=>cols.includes(d));
+      if(found)autoMap[campo.id]=found;
+    }
+  });
+  colMap=autoMap;
+
+  // Construir UI del mapper
+  const grid=document.getElementById('mapperGrid');
+  const colOpts=['<option value="">— No usar —</option>',...cols.map(c=>`<option value="${c}">${c}</option>`)].join('');
+  const hojaOpts=['<option value="">Primera hoja automática</option>',...sheets.map(s=>`<option value="${s}">${s}</option>`)].join('');
+
+  grid.innerHTML=CAMPOS.map(campo=>{
+    const val=autoMap[campo.id]||'';
+    const isMapped=!!val;
+    const cls=campo.req?(isMapped?'map-field mapped':'map-field missing'):'map-field'+(isMapped?' mapped':'');
+    const opts=campo.id==='hoja'?hojaOpts:colOpts;
+    return`<div class="${cls}" id="mf_${campo.id}">
+      <label>${campo.label}${campo.req?'<span class="map-required"> *</span>':''}</label>
+      <select onchange="onMapChange('${campo.id}',this.value)">
+        ${campo.id==='hoja'?hojaOpts:colOpts.replace(`value="${val}"`,`value="${val}" selected`)}
+      </select>
+      <div class="map-hint">${campo.hint}</div>
+    </div>`;
+  }).join('');
+
+  // Seleccionar los valores auto-asignados
+  CAMPOS.forEach(campo=>{
+    const sel=grid.querySelector(`#mf_${campo.id} select`);
+    if(sel&&autoMap[campo.id])sel.value=autoMap[campo.id];
+  });
+
+  document.getElementById('colMapper').style.display='';
+  // Si el mapeo guardado auto-completó todos los requeridos, mostrar estado
+  const reqs=CAMPOS.filter(c=>c.req);
+  const allMapped=reqs.every(c=>autoMap[c.id]);
+  if(allMapped&&saved){
+    document.getElementById('mapperStatus').textContent='✓ Configuración guardada aplicada automáticamente';
+  }
+}
+
+function onMapChange(campoId, val){
+  colMap[campoId]=val||null;
+  const el=document.getElementById('mf_'+campoId);
+  if(!el)return;
+  const campo=CAMPOS.find(c=>c.id===campoId);
+  el.className='map-field'+(val?' mapped':campo&&campo.req?' missing':'');
+}
+
+function guardarMapeo(){
+  try{
+    localStorage.setItem(MAPEO_KEY,JSON.stringify(colMap));
+    document.getElementById('mapperStatus').textContent='✓ Configuración guardada para próximas sesiones';
+    setTimeout(()=>{const s=document.getElementById('mapperStatus');if(s)s.textContent='';},3000);
+  }catch(e){}
+}
+
+function cargarMapeoGuardado(){
+  try{const r=localStorage.getItem(MAPEO_KEY);return r?JSON.parse(r):null;}catch(e){return null;}
+}
+
+function resetMapeo(){
+  colMap={};
+  document.querySelectorAll('#mapperGrid select').forEach(s=>s.value='');
+  document.querySelectorAll('#mapperGrid .map-field').forEach(el=>{
+    el.className='map-field';
+  });
+  document.getElementById('mapperStatus').textContent='';
+}
+
+function aplicarMapeo(){
+  // Validar campos requeridos
+  const faltantes=CAMPOS.filter(c=>c.req&&!colMap[c.id]);
+  if(faltantes.length){
+    faltantes.forEach(c=>{
+      const el=document.getElementById('mf_'+c.id);
+      if(el)el.className='map-field missing';
+    });
+    document.getElementById('mapperStatus').textContent='⚠ Asigna los campos obligatorios (marcados en rojo)';
+    return;
+  }
+  // Procesar todos los archivos cargados
+  Object.values(rawFiles).forEach(({wb,fileName})=>{
+    procesarArchivo(wb,fileName);
+  });
+  document.getElementById('colMapper').style.display='none';
+  rawFiles={};
+}
+
+function procesarArchivo(wb, fileName){
+  const hojaElegida=colMap['hoja']||wb.SheetNames[0];
+  const sh=wb.Sheets[hojaElegida]||wb.Sheets[wb.SheetNames[0]];
+  if(!sh){alert(`No se encontró la hoja en "${fileName}"`);return;}
+
+  // Detectar fila de encabezado dinámicamente
+  const allRows=XLSX.utils.sheet_to_json(sh,{defval:'',raw:true,header:1});
+  const headerColName=colMap['programado']||colMap['ejecutado']||colMap['fecha'];
+  let headerIdx=0;
+  for(let i=0;i<Math.min(10,allRows.length);i++){
+    if(allRows[i].some(c=>c&&c.toString().trim()===headerColName)){headerIdx=i;break;}
+  }
+  const rows=XLSX.utils.sheet_to_json(sh,{defval:'',raw:true,range:headerIdx});
+
+  const get=(r,campoId)=>{
+    const col=colMap[campoId];
+    return col?r[col]:undefined;
+  };
+
+  const parsed=rows.map(r=>{
+    const programado=parseFloat(get(r,'programado'))||0;
+    const ejecutado=parseFloat(get(r,'ejecutado'))||0;
+    let fillRate=parseFloat(get(r,'fillRate'))||0;
+    if(fillRate>1)fillRate/=100;
+    if(fillRate>1)fillRate=1;
+    // Si no hay fill rate pero hay programado y ejecutado, calcularlo
+    if(!fillRate&&programado>0)fillRate=Math.min(ejecutado/programado,1);
+
+    const horasRaw=get(r,'horas');
+    const horasTotales=typeof horasRaw==='number'?horasRaw*24:parseFloat(horasRaw)||0;
+
+    let prod=parseFloat(get(r,'productividad'))||0;
+    if(!prod&&horasTotales>0)prod=ejecutado/horasTotales;
+
+    const fecha=parseExcelDate(get(r,'fecha'));
+    const tipo=(get(r,'tipo')||'').toString().trim().toUpperCase()||'OPERACIÓN';
+    const cuenta=(get(r,'cuenta')||'').toString().trim()||'Sin cuenta';
+    const cliente=(get(r,'cliente')||'').toString().trim();
+    const responsable=(get(r,'responsable')||'').toString().trim();
+    const status=(get(r,'status')||'').toString().trim();
+    const sva=(get(r,'sva')||'').toString().trim().toUpperCase();
+
+    return{
+      fecha,
+      mesKey:fecha?`${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}`:'sin-fecha',
+      mesLabel:fecha?`${MESES[fecha.getMonth()]} ${fecha.getFullYear()}`:'Sin fecha',
+      tipo,cuenta,cliente,responsable,
+      programado,ejecutado,fillRate,horasTotales,productividad:prod,
+      status,sva,archivo:fileName,
+    };
+  }).filter(r=>r.programado>0||r.ejecutado>0);
+
+  if(!parsed.length){alert(`Sin filas válidas en "${fileName}". Verifica que los campos obligatorios tengan datos.`);return;}
+  loadedFiles[fileName]=parsed;
+  rebuildData();
 }
 
 function rebuildData(){
@@ -568,7 +762,7 @@ function removeFile(name){
     ['navTabs','mesPill','btnAlertToggle'].forEach(id=>document.getElementById(id).style.display='none');
     document.getElementById('dropZone').classList.remove('has-data');
     document.getElementById('uploadTitle').textContent='Carga tus archivos Excel';
-    document.getElementById('uploadDesc').textContent='Arrastra uno o varios .xlsx — pueden ser meses distintos, el dashboard los consolida.\nHoja requerida: FACT_OPERACIONES';
+    document.getElementById('uploadDesc').textContent='Arrastra uno o más archivos .xlsx — el dashboard detecta las columnas automáticamente y te deja asignarlas.';
     document.getElementById('btnAdd').style.display='none';
     document.getElementById('fileList').innerHTML='';
     document.getElementById('alertPill').style.display='none';
