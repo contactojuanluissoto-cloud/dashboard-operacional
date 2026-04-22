@@ -1,0 +1,26 @@
+{
+  "name": "Dashboard Operacional",
+  "short_name": "Dashboard Op.",
+  "description": "Dashboard operacional para seguimiento de operaciones logísticas",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d0f14",
+  "theme_color": "#0d0f14",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%230d0f14'/><circle cx='64' cy='96' r='20' fill='%234f9cf9'/><circle cx='96' cy='58' r='20' fill='%2336c98e'/><circle cx='128' cy='96' r='20' fill='%23f97b4f'/><circle cx='96' cy='134' r='20' fill='%23c07ef8'/><line x1='64' y1='96' x2='96' y2='58' stroke='%234f9cf9' stroke-width='7' opacity='0.6'/><line x1='96' y1='58' x2='128' y2='96' stroke='%2336c98e' stroke-width='7' opacity='0.6'/><line x1='128' y1='96' x2='96' y2='134' stroke='%23f97b4f' stroke-width='7' opacity='0.6'/><line x1='96' y1='134' x2='64' y2='96' stroke='%23c07ef8' stroke-width='7' opacity='0.6'/></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%230d0f14'/><circle cx='170' cy='256' r='52' fill='%234f9cf9'/><circle cx='256' cy='154' r='52' fill='%2336c98e'/><circle cx='342' cy='256' r='52' fill='%23f97b4f'/><circle cx='256' cy='358' r='52' fill='%23c07ef8'/><line x1='170' y1='256' x2='256' y2='154' stroke='%234f9cf9' stroke-width='18' opacity='0.6'/><line x1='256' y1='154' x2='342' y2='256' stroke='%2336c98e' stroke-width='18' opacity='0.6'/><line x1='342' y1='256' x2='256' y2='358' stroke='%23f97b4f' stroke-width='18' opacity='0.6'/><line x1='256' y1='358' x2='170' y2='256' stroke='%23c07ef8' stroke-width='18' opacity='0.6'/></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "lang": "es"
+}
